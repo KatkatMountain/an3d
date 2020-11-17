@@ -1,5 +1,6 @@
 
 #include "cloth.hpp"
+#include <cmath>
 
 
 #ifdef SCENE_CLOTH
@@ -12,6 +13,8 @@ using namespace vcl;
 // - Drag
 // - Spring force
 // - Wind force
+//
+float current_magnitude = 0.f;
 void scene_model::compute_forces()
 {
     const size_t N = force.size();        // Total number of particles of the cloth Nu x Nv
@@ -33,6 +36,63 @@ void scene_model::compute_forces()
     const float mu = user_parameters.mu;
     for(size_t k=0; k<N; ++k)
         force[k] = force[k]-mu*speed[k];
+
+    // Wind
+    const vec3 w = {-current_magnitude, 0, 0};
+    for(int ku=0; ku<N_dim; ++ku) {
+        for(int kv=0; kv<N_dim; ++kv) {
+            int current = ku * N_dim + kv;
+            vec3 normal {0, 0, 0};
+            unsigned nb_normal = 0;
+            if (ku > 0){
+                int up = (ku - 1) * N_dim + kv;
+                if (kv > 0){
+                    int left = ku * N_dim + kv - 1;
+                    vec3 temp = normalize(cross(normalize(position[up] - position[current]),
+                                              normalize(position[left] - position[current])));
+                    if (temp[0] > 0)
+                        temp = -temp;
+                    normal += temp;
+                    nb_normal++;
+                }
+                if (kv < N_dim - 1)
+                {
+                    int right = ku * N_dim + kv + 1;
+                    vec3 temp = normalize(cross(normalize(position[up] - position[current]),
+                                              normalize(position[right] - position[current])));
+                    if (temp[0] > 0)
+                        temp = -temp;
+                    normal += temp;
+                    nb_normal++;
+                }
+            }
+            if (ku < N_dim - 1){
+                int down = (ku + 1) * N_dim + kv;
+                if (kv > 0){
+                    int left = ku * N_dim + kv - 1;
+                    vec3 temp = normalize(cross(normalize(position[down] - position[current]),
+                                              normalize(position[left] - position[current])));
+                    if (temp[0] > 0)
+                        temp = -temp;
+                    normal += temp;
+                    nb_normal++;
+                }
+                if (kv < N_dim - 1)
+                {
+                    int right = ku * N_dim + kv + 1;
+                    vec3 temp = normalize(cross(normalize(position[down] - position[current]),
+                                              normalize(position[right] - position[current])));
+                    if (temp[0] > 0)
+                        temp = -temp;
+                    normal += temp;
+                    nb_normal++;
+                }
+            }
+
+            normal /= nb_normal;
+            force[current] += w * 0.001f * dot(normalize(w), normal);
+        }
+    }
 
     // Springs
     for(int ku=0; ku<N_dim; ++ku) {
@@ -73,8 +133,32 @@ void scene_model::compute_forces()
 // Handle detection and response to collision with the shape described in "collision_shapes" variable
 void scene_model::collision_constraints()
 {
-    // Handle collisions here (with the ground and the sphere)
-    // ...
+    //Ground collision
+    const size_t N = force.size();        // Total number of particles of the cloth Nu x Nv
+    for (size_t k = 0; k < N; ++k)
+    {
+        if (position[k][1] < collision_shapes.ground_height)
+            position[k][1] = collision_shapes.ground_height;
+    }
+    
+    //Sphere collision
+    for (size_t k = 0; k < N; ++k)
+    {
+        float detection = norm(position[k] - collision_shapes.sphere_p);
+        if (detection <= collision_shapes.sphere_r + 0.01f)
+        {
+            vec3 u = (position[k] - collision_shapes.sphere_p) / norm(position[k] - collision_shapes.sphere_p);
+            float m1 = 0.01f;
+            float m2 = 0.01f;
+            float j = 2 * (m1 * m2) / (m1 + m2) * dot(- speed[k], u);
+
+            speed[k] = 0.1f * speed[k] + 0.1f * j/(user_parameters.m / (float)(N));
+
+            float d = collision_shapes.sphere_r + 0.01f - norm(position[k] - collision_shapes.sphere_p);
+            //speed[k] = 0.1f * speed[k];
+            position[k] = position[k] + d/2.f*u;
+        }
+    }
 }
 
 
@@ -136,12 +220,12 @@ void scene_model::setup_data(std::map<std::string,GLuint>& shaders, scene_struct
     // Default value for simulation parameters
     user_parameters.K    = 100.0f;
     user_parameters.m    = 5.0f;
-    user_parameters.wind = 10.0f;
+    user_parameters.wind = 0.0f;
     user_parameters.mu   = 0.02f;
 
     // Set collision shapes
     collision_shapes.sphere_p = {0,0.1f,0};
-    collision_shapes.sphere_r = 0.2f;
+    collision_shapes.sphere_r = 0.1f;
     collision_shapes.ground_height = 0.1f;
 
     // Init visual models
@@ -171,6 +255,8 @@ void scene_model::frame_draw(std::map<std::string,GLuint>& shaders, scene_struct
         const size_t number_of_substeps = 4;
         for(size_t k=0; (!simulation_diverged  || force_simulation) && k<number_of_substeps; ++k)
         {
+            current_magnitude = user_parameters.wind + (user_parameters.wind / 2.f) * sinf(0.1*dt);
+            
             compute_forces();
             numerical_integration(h);
             collision_constraints();                 // Detect and solve collision with other shapes
