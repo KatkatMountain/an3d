@@ -7,25 +7,37 @@
 
 using namespace vcl;
 
+enum intersection_type { BOX = 0, SPHERE = 1};
 
+intersection_type current_inter = BOX;
+vec3 camera_down = {0.f, -1.f, 0.f};
 
-
-
-
-
-void scene_model::frame_draw(std::map<std::string,GLuint>& , scene_structure& scene, gui_structure& )
+void scene_model::frame_draw(std::map<std::string,GLuint>& shaders , scene_structure& scene, gui_structure& )
 {
     float dt = 0.02f * timer.scale;
     timer.update();
 
     set_gui();
 
+    mat4 cam = scene.camera.view_matrix();
+    vec3 temp = {cam[4], cam[5], cam[6]}; //Extract up vector;
+    camera_down = normalize(-temp);
+
     create_new_particle();
     compute_time_step(dt);
 
     display_particles(scene);
-    draw(borders, scene.camera);
-
+    if (current_inter == intersection_type::BOX)
+        draw(borders, scene.camera);
+    else
+    {
+        sphere.uniform.transform.translation = sphere_p;
+        sphere.uniform.transform.scaling = sphere_r;
+        sphere.uniform.color = {0.f, 1.f, 1.f};
+        sphere.shader = shaders["wireframe"];
+        draw(sphere, scene.camera);
+        sphere.shader = shaders["mesh"];
+    }
 }
 
 void scene_model::compute_time_step(float dt)
@@ -33,7 +45,7 @@ void scene_model::compute_time_step(float dt)
     // Set forces
     const size_t N = particles.size();
     for(size_t k=0; k<N; ++k)
-        particles[k].f = vec3(0,-9.81f,0);
+        particles[k].f = 9.81f * camera_down * 2.f;
 
 
     // Integrate position and speed of particles through time
@@ -47,36 +59,13 @@ void scene_model::compute_time_step(float dt)
         p = p + dt * v;
     }
 
+    float alpha, beta;
+
     // Collisions with cube
     // ... to do
 
-    float alpha = 0.3;
-    float beta = 0.3;
-    
-    for (size_t i = 0; i < N; i++)
-    {
-        for (size_t j = 0; j < plane_points.size(); j++)
-        {
-            vec3 a = plane_points[j];
-            vec3 n = plane_normals[j];
-            particle_structure& p = particles[i];
-
-            float detection = dot(p.p - a, n);
-
-            if (detection <= p.r)
-            {
-                vec3 v_ortho = dot(p.v, n) * n;
-                vec3 v_parallel = p.v - dot(p.v, n) * n;
-                p.v = alpha * v_parallel - beta * v_ortho;
-                
-                float d = p.r - dot(p.p - a, n);
-                p.p = p.p + d*n; 
-            }
-        }
-    }
-
-    // Collisions between spheres
-    // ... to do
+    alpha = 0.5;
+    beta = 0.5;
     for (size_t i = 0; i < N; i++)
     {
         particle_structure& p1 = particles[i];
@@ -92,13 +81,14 @@ void scene_model::compute_time_step(float dt)
             
             if (detection <= p1.r + p2.r)
             {
-                float epsilon = 0.4;
+                //std::cout << "normal case";
+                float epsilon = 0.0001;
                 vec3 u = (p1.p - p2.p) / norm(p1.p - p2.p);
 
                 if (abs(norm(p1.v - p2.v)) > epsilon)
                 {
-                    float m1 = 2;
-                    float m2 = 2;
+                    float m1 = 1;
+                    float m2 = 1;
 
                     float j = 2 * (m1 * m2) / (m1 + m2) * dot(p2.v - p1.v, u);
                     
@@ -108,14 +98,63 @@ void scene_model::compute_time_step(float dt)
 
                 else
                 {
-                    float mu = 0.2;
-                    p1.v = mu * p1.v;
-                    p2.v = mu * p2.v;
+                    //std::cout << "friction case";
+                    float mu = 0.5;
+                    p1.v = mu * p2.v;
+                    p2.v = mu * p1.v;
                 }
 
                 float d = p1.r + p2.r - norm(p1.p - p2.p);
                 p1.p = p1.p + d/2*u;
             }
+        }
+    }
+    
+    alpha = 0.7;
+    beta = 0.7;
+    // Collisions between spheres
+    // ... to do
+    for (size_t i = 0; i < N; i++)
+    {
+        if (current_inter == BOX)
+        {
+            for (size_t j = 0; j < plane_points.size(); j++)
+            {
+                vec3 a = plane_points[j];
+                vec3 n = plane_normals[j];
+                particle_structure& p = particles[i];
+
+                float detection = dot(p.p - a, n);
+
+                if (detection <= p.r)
+                {
+                    vec3 v_ortho = dot(p.v, n) * n;
+                    vec3 v_parallel = p.v - dot(p.v, n) * n;
+                    p.v = alpha * v_parallel - beta * v_ortho;
+
+                    float d = p.r - dot(p.p - a, n);
+                    p.p = p.p + d*n; 
+                }
+            }
+        }
+        else
+        {
+            particle_structure& p = particles[i];
+            float detection = norm(p.p - sphere_p);
+            
+            if (detection >= sphere_r - p.r)
+            {
+                vec3 n = normalize(sphere_p - p.p);
+                vec3 a = sphere_p - normalize(n) * sphere_r;
+                vec3 v_ortho = dot(p.v, n) * n;
+                vec3 v_parallel = p.v - dot(p.v, n) * n;
+                p.v = alpha * v_parallel - beta * v_ortho;
+
+                float d = p.r - dot(p.p - a, n);
+                p.p = p.p + d*n; 
+
+            }
+
         }
     }
 }
@@ -146,6 +185,7 @@ void scene_model::create_new_particle()
 
     }
 }
+
 void scene_model::display_particles(scene_structure& scene)
 {
     const size_t N = particles.size();
@@ -175,8 +215,8 @@ void scene_model::setup_data(std::map<std::string,GLuint>& shaders, scene_struct
     borders.uniform.color = {0,0,0};
     borders.shader = shaders["curve"];
 
-   plane_points = {{0,-1,0}, {1,0,0}, {-1,0,0}, {0,0,-1}, {0,0,1}}; 
-   plane_normals = {{0,1,0}, {-1,0,0}, {1,0,0}, {0,0,1}, {0,0,-1}};
+   plane_points = {{0,-1,0}, {1,0,0}, {-1,0,0}, {0,0,-1}, {0,0,1}, {0,1,0}}; 
+   plane_normals = {{0,1,0}, {-1,0,0}, {1,0,0}, {0,0,1}, {0,0,-1}, {0, -1, 0}};
 }
 
 

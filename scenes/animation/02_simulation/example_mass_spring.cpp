@@ -86,15 +86,15 @@ void scene_model::frame_draw(std::map<std::string,GLuint>& shaders, scene_struct
         vec3& p = pB.p; // position of particle
         vec3& v = pB.v; // speed of particle
 
-        v = v + dt * F / m;
         p = p + dt * v;
+        v = v + dt * F / m;
     
-        const vec3 f2_spring  = spring_force(pC.p, pB.p, L0, K);
-        const vec3 f2_damping = pC.v * mu;
-        const vec3 F2 = f2_spring+f_weight - f2_damping;
+        //const vec3 f2_spring  = spring_force(pC.p, pB.p, L0, K);
+        //const vec3 f2_damping = pC.v * mu;
+        //const vec3 F2 = f2_spring+f_weight - f2_damping;
         
-        pC.v = pC.v + dt * F2 / m;
-        pC.p = pC.p + dt * pC.v;
+        //pC.v = pC.v + dt * F2 / m;
+        //pC.p = pC.p + dt * pC.v;
     }
 
 
@@ -118,13 +118,13 @@ void scene_model::frame_draw(std::map<std::string,GLuint>& shaders, scene_struct
     segment_drawer.draw(shaders["segment_im"],scene.camera);
 
 
-    sphere.uniform.transform.translation = pC.p;
+    /*sphere.uniform.transform.translation = pC.p;
     sphere.uniform.color = {1,1,0};
     draw(sphere, scene.camera, shaders["mesh"]);
 
     segment_drawer.uniform_parameter.p1 = pB.p;
     segment_drawer.uniform_parameter.p2 = pC.p;
-    segment_drawer.draw(shaders["segment_im"],scene.camera);
+    segment_drawer.draw(shaders["segment_im"],scene.camera); */
 
 
     draw(borders, scene.camera, shaders["curve"]);

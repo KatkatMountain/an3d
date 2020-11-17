@@ -148,11 +148,11 @@ void scene_model::collision_constraints()
         if (detection <= collision_shapes.sphere_r + 0.01f)
         {
             vec3 u = (position[k] - collision_shapes.sphere_p) / norm(position[k] - collision_shapes.sphere_p);
-            float m1 = 0.01f;
-            float m2 = 0.01f;
+            float m1 = user_parameters.m / (float)(N);
+            float m2 = 100.f;
             float j = 2 * (m1 * m2) / (m1 + m2) * dot(- speed[k], u);
 
-            speed[k] = 0.1f * speed[k] + 0.1f * j/(user_parameters.m / (float)(N));
+            speed[k] = 0.5f * speed[k] + 0.5f * j/(user_parameters.m / (float)(N));
 
             float d = collision_shapes.sphere_r + 0.01f - norm(position[k] - collision_shapes.sphere_p);
             //speed[k] = 0.1f * speed[k];

@@ -44,6 +44,9 @@ struct scene_model : scene_base
  
    std::vector<vcl::vec3> plane_points; 
    std::vector<vcl::vec3> plane_normals;
+
+   vcl::vec3 sphere_p = {0.f, 0.f, 0.f};
+   float sphere_r = 1.f;
 };
 
 
